@@ -1,25 +1,119 @@
-1. __len__(self) – O(C)
-This method determines how many records are currently stored by scanning the entire internal list. Because it checks every slot in the table (even the empty ones), the running time depends on the table’s capacity rather than the number of actual records. For that reason, the complexity is O(C).
+class LinearProbingTable:
 
-2. search(self, key) – O(C + n) → effectively O(n)
-The search operation begins by calling len(self), which already takes O(C) time since it scans the whole table. After that, the function walks through the stored records in a simple linear manner until the key is found or all items are checked. In the worst case, it inspects every record. Combining both steps gives O(C + n), which simplifies to O(n) because C grows with the table.
+    class Record:
+        def __init__(self, key, value):
+            self.key = key
+            self.value = value
 
-3. insert(self, key, value) – O(n²)
-The insert function is the slowest of them all. It first calls search(key) (a linear operation). If the table is full, it performs a resize and copies all existing elements, which is O(C). After inserting the new record at the end, the table runs a bubble sort to restore sorted order. Since bubble sort takes O(n²) time, this dominates the overall cost, making insertion O(n²).
+    class _Tomb:
+        pass
 
-4. modify(self, key, value) – O(n)
-To update a record’s value, the function goes through the list one item at a time until it finds the key. This is simply a linear search across the stored elements, giving it O(n) complexity. Although it calls len(self) repeatedly in the loop condition, the overall behaviour stays linear.
-5. remove(self, key) – O(n)
-Removing a record also requires a linear search to locate the correct key. Once it finds the target, the function shifts all the following elements one position left. In the worst case—removing the first element—this shift covers almost the entire list. Both the search and the shift are linear operations, so removal runs in O(n) time.
-6. capacity(self) – O(1)
-This method simply returns the table’s capacity. It does not scan or compute anything, so it operates in constant time, O(1).
+    TOMBSTONE = _Tomb()
 
-| Function   | Complexity | Explanation                                     |
-| ---------- | ---------- | ----------------------------------------------- |
-| `insert`   | **O(n²)**  | Uses bubble sort after adding each new record.  |
-| `modify`   | **O(n)**   | Linearly scans until the key is found.          |
-| `remove`   | **O(n)**   | Searches for the key and shifts later items.    |
-| `search`   | **O(n)**   | Walks through stored records until key matches. |
-| `capacity` | **O(1)**   | Returns the capacity directly.                  |
-| `__len__`  | **O(C)**   | Counts entries by scanning the entire list.     |
+    def __init__(self, capacity=32):
+        self._cap = capacity
+        self._table = [None] * capacity
+        self._size = 0
 
+    def __len__(self):
+        return self._size
+
+    def capacity(self):
+        return self._cap
+
+    def _index(self, key):
+        return hash(key) % self._cap
+
+    def _load_factor(self):
+        return self._size / self._cap
+
+    def _rehash(self):
+        old = self._table
+        self._cap *= 2
+        self._table = [None] * self._cap
+        old_size = self._size
+        self._size = 0
+
+        for slot in old:
+            if isinstance(slot, self.Record):
+                self.insert(slot.key, slot.value)
+
+        self._size = old_size
+
+    def insert(self, key, value):
+        idx = self._index(key)
+        first_tomb = None
+        start = idx
+
+        while True:
+            slot = self._table[idx]
+
+            if slot is None:
+                insert_idx = first_tomb if first_tomb is not None else idx
+                self._table[insert_idx] = self.Record(key, value)
+                self._size += 1
+                if self._load_factor() > 0.7:
+                    self._rehash()
+                return True
+
+            if slot is self.TOMBSTONE:
+                if first_tomb is None:
+                    first_tomb = idx
+
+            elif slot.key == key:
+                return False
+
+            idx = (idx + 1) % self._cap
+            if idx == start:
+                return False
+
+    def search(self, key):
+        idx = self._index(key)
+        start = idx
+
+        while True:
+            slot = self._table[idx]
+
+            if slot is None:
+                return None
+            if slot is not self.TOMBSTONE and slot.key == key:
+                return slot.value
+
+            idx = (idx + 1) % self._cap
+            if idx == start:
+                return None
+
+    def modify(self, key, value):
+        idx = self._index(key)
+        start = idx
+
+        while True:
+            slot = self._table[idx]
+
+            if slot is None:
+                return False
+            if slot is not self.TOMBSTONE and slot.key == key:
+                slot.value = value
+                return True
+
+            idx = (idx + 1) % self._cap
+            if idx == start:
+                return False
+
+    def remove(self, key):
+        idx = self._index(key)
+        start = idx
+
+        while True:
+            slot = self._table[idx]
+
+            if slot is None:
+                return False
+            if slot is not self.TOMBSTONE and slot.key == key:
+                self._table[idx] = self.TOMBSTONE
+                self._size -= 1
+                return True
+
+            idx = (idx + 1) % self._cap
+            if idx == start:
+                return False
